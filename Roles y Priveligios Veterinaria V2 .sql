@@ -1,4 +1,4 @@
-/*
+﻿/*
     PROYECTO VETERINARIA
     SCRIPT: 05_seguridad.sql
 
@@ -51,6 +51,12 @@ WITH PASSWORD = 'Demo_Gerencia#2026_G5',
 
 CREATE LOGIN login_admin_op
 WITH PASSWORD = 'Demo_AdminOp#2026_O6',
+     CHECK_POLICY = ON,
+     CHECK_EXPIRATION = ON;
+
+-- Login destinado a la consulta de registros de auditoría.
+CREATE LOGIN login_auditor
+WITH PASSWORD = 'Demo_Auditor#2026_A7',
      CHECK_POLICY = ON,
      CHECK_EXPIRATION = ON;
 GO
@@ -113,7 +119,29 @@ WITH PASSWORD = 'Demo_Veterinario#2026_V11',
 GO
 
 ------------------------------------------------------------
--- 2. CREACIÓN DE USUARIOS DE LA BASE DE DATOS
+-- 2. CREACIÓN DEL ROL DE AUDITORÍA DE SERVIDOR
+------------------------------------------------------------
+
+-- El rol de auditoría es independiente de los roles de VETERINARIA.
+CREATE SERVER ROLE rol_auditor_bd;
+GO
+
+-- Asignación del login al rol de auditoría.
+ALTER SERVER ROLE rol_auditor_bd
+ADD MEMBER login_auditor;
+GO
+
+-- Permite consultar los registros de auditoría del servidor.
+GRANT VIEW SERVER SECURITY AUDIT TO rol_auditor_bd;
+GO
+
+-- Establece master como base de datos predeterminada.
+ALTER LOGIN login_auditor
+WITH DEFAULT_DATABASE = master;
+GO
+
+------------------------------------------------------------
+-- 3. CREACIÓN DE USUARIOS DE LA BASE DE DATOS
 ------------------------------------------------------------
 
 USE VETERINARIA;
@@ -143,7 +171,7 @@ CREATE USER user_veterinario11 FOR LOGIN login_veterinario11;
 GO
 
 ------------------------------------------------------------
--- 3. CREACIÓN DE ROLES FUNCIONALES
+-- 4. CREACIÓN DE ROLES FUNCIONALES DE LA BASE DE DATOS
 ------------------------------------------------------------
 
 CREATE ROLE rol_administrador_bd;
@@ -156,7 +184,7 @@ CREATE ROLE rol_administrador_operativo;
 GO
 
 ------------------------------------------------------------
--- 4. ASIGNACIÓN DE USUARIOS A ROLES
+-- 5. ASIGNACIÓN DE USUARIOS A ROLES
 ------------------------------------------------------------
 
 -- Asignación de los usuarios principales.
@@ -183,11 +211,8 @@ ALTER ROLE rol_veterinario ADD MEMBER user_veterinario11;
 GO
 
 ------------------------------------------------------------
--- 5. CREACIÓN DE ESQUEMAS FUNCIONALES
+-- 6. CREACIÓN DE ESQUEMAS FUNCIONALES
 ------------------------------------------------------------
-
-USE VETERINARIA; 
-GO
 
 CREATE SCHEMA Clinica;
 GO
@@ -200,8 +225,9 @@ GO
 
 CREATE SCHEMA Facturacion;
 GO
+
 ------------------------------------------------------------
--- 6. ORGANIZACIÓN DE LAS TABLAS EN SUS ESQUEMAS
+-- 7. ORGANIZACIÓN DE LAS TABLAS EN SUS ESQUEMAS
 ------------------------------------------------------------
 
 -- Tablas correspondientes al área clínica.
@@ -232,7 +258,7 @@ ALTER SCHEMA Facturacion TRANSFER dbo.forma_pago;
 GO
 
 ------------------------------------------------------------
--- 7. PERMISOS DEL ROL VETERINARIO
+-- 8. PERMISOS DEL ROL VETERINARIO
 ------------------------------------------------------------
 
 -- Consulta de veterinarios y especialidades.
@@ -250,7 +276,7 @@ GRANT SELECT, INSERT, UPDATE ON OBJECT::Recepcion.especie TO rol_veterinario;
 GO
 
 ------------------------------------------------------------
--- 8. PERMISOS DEL ROL RECEPCIONISTA
+-- 9. PERMISOS DEL ROL RECEPCIONISTA
 ------------------------------------------------------------
 
 -- Consulta, inserción y actualización de propietarios, mascotas y citas.
@@ -264,7 +290,7 @@ GRANT SELECT ON OBJECT::Recepcion.especie TO rol_recepcionista;
 GO
 
 ------------------------------------------------------------
--- 9. PERMISOS DEL ROL INVENTARIO
+-- 10. PERMISOS DEL ROL INVENTARIO
 ------------------------------------------------------------
 
 -- Gestión de artículos, incluida su eliminación.
@@ -275,7 +301,7 @@ GRANT SELECT, INSERT, UPDATE ON OBJECT::Inventario.tipo_articulo TO rol_inventar
 GO
 
 ------------------------------------------------------------
--- 10. PERMISOS DEL ROL FACTURACIÓN
+-- 11. PERMISOS DEL ROL FACTURACIÓN
 ------------------------------------------------------------
 
 -- Consulta, inserción y actualización de los registros de facturación.
@@ -285,7 +311,7 @@ GRANT SELECT, INSERT, UPDATE ON OBJECT::Facturacion.forma_pago TO rol_facturacio
 GO
 
 ------------------------------------------------------------
--- 11. PERMISOS DEL ROL GERENCIA
+-- 12. PERMISOS DEL ROL GERENCIA
 ------------------------------------------------------------
 
 -- Consulta de todas las tablas clínicas.
@@ -313,7 +339,7 @@ GRANT SELECT ON OBJECT::Facturacion.forma_pago TO rol_gerencia;
 GO
 
 ------------------------------------------------------------
--- 12. PERMISOS DEL ROL ADMINISTRADOR OPERATIVO
+-- 13. PERMISOS DEL ROL ADMINISTRADOR OPERATIVO
 ------------------------------------------------------------
 
 -- Gestión de veterinarios y especialidades, sin permiso de eliminación.
@@ -322,7 +348,7 @@ GRANT SELECT, INSERT, UPDATE ON OBJECT::Clinica.especialidad TO rol_administrado
 GO
 
 ------------------------------------------------------------
--- 13. PERMISOS DEL ROL ADMINISTRADOR DE BASE DE DATOS
+-- 14. PERMISOS DEL ROL ADMINISTRADOR DE BASE DE DATOS
 ------------------------------------------------------------
 
 -- Administración de usuarios y roles dentro de VETERINARIA.
@@ -358,7 +384,7 @@ GRANT DELETE ON OBJECT::Inventario.articulo TO rol_administrador_bd WITH GRANT O
 GO
 
 ------------------------------------------------------------
--- 14. PERMISO DE ADMINISTRACIÓN DE LOGINS
+-- 15. PERMISO DE ADMINISTRACIÓN DE LOGINS
 ------------------------------------------------------------
 
 -- Permite al login administrador gestionar logins de la instancia.
@@ -369,7 +395,7 @@ GRANT ALTER ANY LOGIN TO login_admin;
 GO
 
 ------------------------------------------------------------
--- 15. VERIFICACIONES FINALES
+-- 16. VERIFICACIONES FINALES
 ------------------------------------------------------------
 
 USE VETERINARIA;
@@ -405,7 +431,7 @@ WHERE dp.name IN (
 ORDER BY dp.name;
 GO
 
--- Verifica la pertenencia de los usuarios a los roles.
+-- Verifica la pertenencia de los usuarios a los roles de base de datos.
 SELECT
     r.name AS rol,
     u.name AS usuario
@@ -437,7 +463,7 @@ WHERE s.name IN ('Clinica', 'Recepcion', 'Inventario', 'Facturacion')
 ORDER BY s.name, t.name;
 GO
 
--- Verifica los permisos asignados directamente a los roles.
+-- Verifica los permisos asignados directamente a los roles de base de datos.
 SELECT
     dp.name AS rol,
     s.name AS esquema,
@@ -477,4 +503,29 @@ INNER JOIN sys.server_principals AS sp
     ON p.grantee_principal_id = sp.principal_id
 WHERE sp.name = 'login_admin'
   AND p.permission_name = 'ALTER ANY LOGIN';
+GO
+
+-- Verifica que login_auditor pertenezca al rol de auditoría.
+SELECT
+    sp.name AS login,
+    sr.name AS rol_servidor
+FROM sys.server_role_members AS srm
+INNER JOIN sys.server_principals AS sr
+    ON srm.role_principal_id = sr.principal_id
+INNER JOIN sys.server_principals AS sp
+    ON srm.member_principal_id = sp.principal_id
+WHERE sr.name = 'rol_auditor_bd'
+  AND sp.name = 'login_auditor';
+GO
+
+-- Verifica el permiso de consulta de auditoría asignado al rol.
+SELECT
+    sp.name AS rol_servidor,
+    p.permission_name AS permiso,
+    p.state_desc AS estado
+FROM sys.server_permissions AS p
+INNER JOIN sys.server_principals AS sp
+    ON p.grantee_principal_id = sp.principal_id
+WHERE sp.name = 'rol_auditor_bd'
+  AND p.permission_name = 'VIEW SERVER SECURITY AUDIT';
 GO
