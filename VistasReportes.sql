@@ -1,3 +1,4 @@
+
 USE VETERINARIA;
 GO
 
@@ -10,6 +11,7 @@ SELECT
     c.fecha_cita,
     c.hora_cita,
     m.nombre AS mascota,
+    e.nombre_especie AS especie,
     p.nombre + ' ' + p.apellido AS propietario,
     v.nombres + ' ' + v.apellidos AS veterinario,
     d.informe AS diagnostico,
@@ -18,6 +20,8 @@ SELECT
 FROM Recepcion.cita c
 INNER JOIN Recepcion.mascota m
     ON c.id_mascota = m.id_mascota
+INNER JOIN Recepcion.especie e
+    ON m.id_especie = e.id_especie
 INNER JOIN Recepcion.propietario p
     ON m.id_propietario = p.id_propietario
 INNER JOIN Clinica.veterinario v
@@ -34,87 +38,14 @@ GO
 
 SELECT *
 FROM dbo.vw_reporte_medico
-ORDER BY fecha_cita, hora_cita;
+ORDER BY
+    CASE WHEN diagnostico IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN tratamiento IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN medicamento IS NULL THEN 1 ELSE 0 END,
+    fecha_cita DESC,
+    hora_cita DESC;
 GO
 
--- VISTA DE SIGUIMIENTO DE PACIENTES
-CREATE OR ALTER VIEW dbo.vw_seguimiento_pacientes AS
-SELECT
-    m.id_mascota,
-    m.nombre AS mascota,
-
-    p.nombre + ' ' + p.apellido AS propietario,
-    p.telefono,
-
-    ultima.fecha_cita AS ultima_atencion,
-    ultima.diagnostico,
-    ultima.tratamiento,
-    ultima.veterinario,
-
-    proxima.fecha_cita AS proxima_cita,
-
-    CASE
-        WHEN proxima.fecha_cita IS NOT NULL
-            THEN 'Con cita programada'
-        ELSE 'Sin cita programada'
-    END AS estado_seguimiento
-
-FROM Recepcion.mascota m
-
-INNER JOIN Recepcion.propietario p
-    ON m.id_propietario = p.id_propietario
-
--- obtener la ultima atencion con tratamiento
-CROSS APPLY (
-    SELECT TOP 1
-        c.fecha_cita,
-        d.informe AS diagnostico,
-        t.dosis AS tratamiento,
-        v.nombres + ' ' + v.apellidos AS veterinario
-
-    FROM Recepcion.cita c
-
-    INNER JOIN Clinica.tratamiento t
-        ON c.id_cita = t.id_cita
-
-    LEFT JOIN Clinica.diagnostico d
-        ON c.id_cita = d.id_cita
-
-    INNER JOIN Clinica.veterinario v
-        ON c.id_veterinario = v.id_veterinario
-
-    WHERE c.id_mascota = m.id_mascota
-      AND c.estado_cita = 'Completada'
-
-    ORDER BY
-        c.fecha_cita DESC,
-        c.hora_cita DESC,
-        c.id_cita DESC,
-        t.id_tratamiento DESC
-) ultima
-
--- buscar la proxima cita reservada
-OUTER APPLY (
-    SELECT TOP 1
-        c.fecha_cita
-
-    FROM Recepcion.cita c
-
-    WHERE c.id_mascota = m.id_mascota
-      AND c.estado_cita = 'Reservada'
-      AND c.fecha_cita >= CAST(GETDATE() AS DATE)
-
-    ORDER BY
-        c.fecha_cita,
-        c.hora_cita,
-        c.id_cita
-) proxima;
-GO
-
-SELECT *
-FROM dbo.vw_seguimiento_pacientes
-ORDER BY ultima_atencion DESC;
-GO
 
                    -- REPORTES DE GESTION Y OPERACIONES
 
@@ -177,9 +108,6 @@ ORDER BY anio, mes;
 GO
 
 
-USE VETERINARIA;
-GO
-
 -- AGENDA DE CITAS RESERVADAS
 CREATE OR ALTER VIEW dbo.vw_agenda_citas AS
 SELECT
@@ -218,7 +146,6 @@ ORDER BY fecha_cita, hora_cita;
 GO
 
 
-
                  -- REPORTES FINANCIEROS Y ADMINISTRATIVOS
 
 -- VISTA DE INGRESOS MENSUALES
@@ -227,37 +154,17 @@ SELECT
     YEAR(f.fecha_emision) AS anio,
     MONTH(f.fecha_emision) AS mes,
 
-    COUNT(f.id_factura) AS facturas_emitidas,
+    COUNT(f.id_factura) AS facturas_pagadas,
 
-    SUM(CASE
-        WHEN f.estado_factura = 'Pagada' THEN 1
-        ELSE 0
-    END) AS facturas_pagadas,
-
-    SUM(CASE
-        WHEN f.estado_factura = 'Pendiente' THEN 1
-        ELSE 0
-    END) AS facturas_pendientes,
-
-    SUM(f.monto_total) AS total_facturado,
-
-    SUM(CASE
-        WHEN f.estado_factura = 'Pagada'
-        THEN f.monto_total
-        ELSE 0
-    END) AS ingresos_cobrados,
-
-    SUM(CASE
-        WHEN f.estado_factura = 'Pendiente'
-        THEN f.monto_total
-        ELSE 0
-    END) AS monto_pendiente,
+    SUM(f.monto_total) AS ingresos_cobrados,
 
     SUM(f.descuento_total) AS descuentos_aplicados,
 
     SUM(f.impuestos_totales) AS impuestos_registrados
 
 FROM Facturacion.factura f
+
+WHERE f.estado_factura = 'Pagada'
 
 GROUP BY
     YEAR(f.fecha_emision),
@@ -268,6 +175,7 @@ SELECT *
 FROM dbo.vw_ingresos_mensuales
 ORDER BY anio, mes;
 GO
+
 
 -- VISTA DE CUENTAS POR COBRAR
 CREATE OR ALTER VIEW dbo.vw_cuentas_por_cobrar AS
@@ -282,6 +190,9 @@ SELECT
     p.correo,
 
     m.nombre AS mascota,
+    e.nombre_especie AS especie,
+    r.nombre_raza AS raza,
+
     c.id_cita,
 
     f.sub_total,
@@ -299,6 +210,13 @@ INNER JOIN Recepcion.cita c
 INNER JOIN Recepcion.mascota m
     ON c.id_mascota = m.id_mascota
 
+INNER JOIN Recepcion.especie e
+    ON m.id_especie = e.id_especie
+
+LEFT JOIN Recepcion.raza r
+    ON m.id_raza = r.id_raza
+    AND m.id_especie = r.id_especie
+
 INNER JOIN Recepcion.propietario p
     ON m.id_propietario = p.id_propietario
 
@@ -307,5 +225,9 @@ GO
 
 SELECT *
 FROM dbo.vw_cuentas_por_cobrar
-ORDER BY dias_desde_emision DESC;
+ORDER BY
+    CASE WHEN raza IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN telefono IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN correo IS NULL THEN 1 ELSE 0 END,
+    dias_desde_emision DESC;
 GO
